@@ -71,7 +71,7 @@ docker run --rm -p 1234:1234 --name storage_controller --network=neon-acres-net 
     harbor.acreops.org/acrelab/neon:gcs storage_controller \
     -l 0.0.0.0:1234 --dev \
     --database-url postgresql://postgres:postgres@standalonepg:5432/storage_controller \
-    --max-offline-interval 10s --max-warming-up-interval 30s --control-plane-url http://compute_hook:3000 &
+    --max-offline-interval 10s --max-warming-up-interval 30s --control-plane-url http://compute_hook:3000 
 ```
 
 **Wait for storage controller startup**
@@ -105,7 +105,7 @@ docker run --rm -p 9898:9898 --name=pageserver1 --network=neon-acres-net \
     -v $GOOGLE_APPLICATION_CREDENTIALS:/data/bourdain.json \
     -v ./.neon/pageserver1:/data/.neon/ \
     -e GOOGLE_APPLICATION_CREDENTIALS=/data/bourdain.json \
-    harbor.acreops.org/acrelab/neon:gcs pageserver -D /data/.neon &
+    harbor.acreops.org/acrelab/neon:gcs pageserver -D /data/.neon 
 ```
 
 **Start PageServer 2**
@@ -114,12 +114,7 @@ docker run --rm -p 9899:9898 --name=pageserver2 --network=neon-acres-net \
     -v $GOOGLE_APPLICATION_CREDENTIALS:/data/bourdain.json \
     -v ./.neon/pageserver2:/data/.neon/ \
     -e GOOGLE_APPLICATION_CREDENTIALS=/data/bourdain.json \
-    harbor.acreops.org/acrelab/neon:gcs pageserver -D /data/.neon &
-```
-
-**Wait for PageServer startup**
-```bash
-sleep 5
+    harbor.acreops.org/acrelab/neon:gcs pageserver -D /data/.neon 
 ```
 
 ### 4. Create Tenant and Timeline
@@ -151,7 +146,7 @@ docker run --network=neon-acres-net --rm -it --name=compute \
     --pgdata /var/db/postgres/compute \
     --connstr "postgresql://cloud_admin@localhost:55433/postgres" \
     --compute-id 1 -b /usr/local/bin/postgres \
-    --config /var/db/postgres/specs/config.json &
+    --config /var/db/postgres/specs/config.json
 ```
 
 **Start Compute Hook**
