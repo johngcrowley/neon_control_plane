@@ -3,7 +3,6 @@ use axum::{extract::State, routing::put, Json, Router};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use sqlx::Row;
-use std::collections::HashSet;
 use tokio::net::TcpListener;
 use tracing::info;
 use tracing_subscriber;
@@ -100,7 +99,7 @@ async fn update_pg_parameter(
 
 async fn notify_attach_handler(
     State(pooler): State<DbPoolsState>,
-    Json(payload): Json<ComputeHookNotifyRequest>,
+    Json(mut payload): Json<ComputeHookNotifyRequest>,
 ) -> anyhow::Result<String, http::StatusCode> {
     info!(
         "Received notify-attach request with params: {:?}, {:?}, {:?}",
@@ -109,13 +108,20 @@ async fn notify_attach_handler(
 
     tracing::debug!("{:?}", payload);
 
+    payload.shards.sort_by_key(|k| k.shard_number);
+    
+    tracing::debug!(
+        "Sorted shards: {:?}",
+        payload.shards,
+    );
+
     let node_ids: Vec<i32> = payload
         .shards
         .into_iter()
-        .map(|s| s.node_id.0 as i32)
-        .collect::<HashSet<i32>>()
-        .into_iter()
-        .collect::<Vec<i32>>();
+        .map(|s| {
+            s.node_id.0 as i32   
+        })
+        .collect();
 
     let sql = "select 'host=' || listen_pg_addr || ' ' || 'port=' || listen_pg_port as addr from nodes where node_id =  ANY($1)";
     let connstring: Vec<String> = sqlx::query(sql)
@@ -126,18 +132,8 @@ async fn notify_attach_handler(
         .iter()
         .map(|r| r.get("addr"))
         .collect();
-
-    tracing::debug!("our connstring: {:?}", connstring);
+    
     tracing::debug!("our node ids: {:?}", node_ids);
-
-    // TODO probably moot
-    if node_ids.len() != connstring.len() {
-        eprintln!(
-            "not all node_ids {:?} in storage_controller database",
-            node_ids
-        );
-        return Err(http::StatusCode::INTERNAL_SERVER_ERROR);
-    }
 
     // set neon.pageserver_connstring to a comma-separated list of PG conn strings to pageservers according to the shards list
     // -- the shards identified by NodeId must be converted to the address+port of the node.
