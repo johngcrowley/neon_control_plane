@@ -1,11 +1,12 @@
 # Neon Self-Hosted Consolidated Operations Runbook
 
 ## Environment Setup
+
+**Set tenant and connection variables**
 ```bash
 export tenant="99336152a31c64b41034e4e904629ce9"
 export timeline="814ce0bd2ae452e11575402e8296b64d"
 export storcon_api="http://localhost:1234"
-export GOOGLE_APPLICATION_CREDENTIALS="/path/to/your/service-account-key.json"
 export storcon_dsn="postgresql://postgres:postgres@standalonepg:5432/storage_controller"
 export compute_dsn="postgresql://cloud_admin:cloud_admin@compute:55433/postgres"
 ```
@@ -13,32 +14,45 @@ export compute_dsn="postgresql://cloud_admin:cloud_admin@compute:55433/postgres"
 ## Quick Infrastructure Startup
 
 ### 1. Reset Environment (if needed)
+
+**Clean local state**
 ```bash
-# Clean local state and remote storage
 sudo rm -rf .neon/pageserver*/tenants
+```
+
+**Clean remote storage buckets**
+```bash
 gsutil rm -r gs://acrelab-production-us1c-neon/pageserver/
 gsutil rm -r gs://acrelab-production-us1c-neon/safekeeper/
+```
+
+**Stop containers and remove network**
+```bash
 docker stop $(docker ps -q --filter network=neon-acres-net) 2>/dev/null || true
 docker network rm neon-acres-net 2>/dev/null || true
 ```
 
 ### 2. Start Infrastructure
+
+**Create Docker network**
 ```bash
-# Network
 docker network create neon-acres-net
+```
 
-# Storage Controller DB
+**Start Storage Controller database**
+```bash
 docker run --rm --name=standalonepg --network=neon-acres-net -p 5432:5432 \
-    -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=storage_controller postgres:16 &
+    -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=storage_controller postgres:16
+```
 
-# Wait for DB to be ready
-sleep 5
-
-# Storage Broker
+**Start Storage Broker**
+```bash
 docker run --rm --network=neon-acres-net --name=storage_broker -p 50051:50051 \
-    harbor.acreops.org/acrelab/neon:gcs storage_broker --listen-addr=0.0.0.0:50051 &
+    harbor.acreops.org/acrelab/neon:gcs storage_broker --listen-addr=0.0.0.0:50051
+```
 
-# SafeKeepers (3 for Paxos)
+**Start SafeKeepers (3 for Paxos)**
+```bash
 for i in 1 2 3; do
     docker run --rm -d --network=neon-acres-net --name=safekeeper$i \
         -v $GOOGLE_APPLICATION_CREDENTIALS:/data/bourdain.json \
@@ -49,25 +63,34 @@ for i in 1 2 3; do
         --remote-storage='{bucket_name="acrelab-production-us1c-neon",prefix_in_bucket="safekeeper/"}' \
         --enable-offload --delete-offloaded-wal --wal-reader-fanout --peer-recovery=true
 done
+```
 
-# Storage Controller
+**Start Storage Controller**
+```bash
 docker run --rm -p 1234:1234 --name storage_controller --network=neon-acres-net \
     harbor.acreops.org/acrelab/neon:gcs storage_controller \
     -l 0.0.0.0:1234 --dev \
     --database-url postgresql://postgres:postgres@standalonepg:5432/storage_controller \
     --max-offline-interval 10s --max-warming-up-interval 30s --control-plane-url http://compute_hook:3000 &
+```
 
-# Wait for storage controller to start
+**Wait for storage controller startup**
+```bash
 sleep 5
+```
 
-# Register SafeKeepers
+**Register SafeKeepers with storage controller**
+```bash
 for sk in 1 2 3; do
   curl -X POST localhost:1234/control/v1/safekeeper/${sk} -d "{
     \"id\": ${sk}, \"region_id\": \"us-central\", \"version\": 1, 
     \"host\":\"safekeeper${sk}\", \"port\":5454, \"http_port\":7676, 
     \"availability_zone_id\": \"ps1\"}"
-done	
+done
+```
 
+**Set SafeKeeper scheduling policy**
+```bash
 for sk in 1 2 3; do
   curl -X POST localhost:1234/control/v1/safekeeper/${sk}/scheduling_policy \
     -d '{"scheduling_policy":"Active"}'
@@ -75,34 +98,43 @@ done
 ```
 
 ### 3. Start PageServers
+
+**Start PageServer 1**
 ```bash
-# PageServer 1
 docker run --rm -p 9898:9898 --name=pageserver1 --network=neon-acres-net \
     -v $GOOGLE_APPLICATION_CREDENTIALS:/data/bourdain.json \
     -v ./.neon/pageserver1:/data/.neon/ \
     -e GOOGLE_APPLICATION_CREDENTIALS=/data/bourdain.json \
     harbor.acreops.org/acrelab/neon:gcs pageserver -D /data/.neon &
+```
 
-# PageServer 2  
+**Start PageServer 2**
+```bash
 docker run --rm -p 9899:9898 --name=pageserver2 --network=neon-acres-net \
     -v $GOOGLE_APPLICATION_CREDENTIALS:/data/bourdain.json \
     -v ./.neon/pageserver2:/data/.neon/ \
     -e GOOGLE_APPLICATION_CREDENTIALS=/data/bourdain.json \
     harbor.acreops.org/acrelab/neon:gcs pageserver -D /data/.neon &
+```
 
+**Wait for PageServer startup**
+```bash
 sleep 5
 ```
 
 ### 4. Create Tenant and Timeline
+
+**Create tenant with 2 shards and Attached(1) policy**
 ```bash
-# Create tenant with 2 shards, Attached(1) policy (recommended)
 curl -X POST $storcon_api/v1/tenant -d '{
   "new_tenant_id": "'$tenant'",
   "shard_parameters": {"count":2, "stripe_size":65558},
   "placement_policy": {"Attached": 1}
 }'
+```
 
-# Create timeline
+**Create timeline**
+```bash
 curl -X POST $storcon_api/v1/tenant/$tenant/timeline -d '{
   "new_timeline_id": "'$timeline'", 
   "pg_version": 16
@@ -110,8 +142,9 @@ curl -X POST $storcon_api/v1/tenant/$tenant/timeline -d '{
 ```
 
 ### 5. Start Compute and Hook
+
+**Start Compute Node**
 ```bash
-# Compute Node
 docker run --network=neon-acres-net --rm -it --name=compute \
     -p 55433:55433 -p 3080:3080 -v ./.neon/compute/:/var/db/postgres/specs/ \
     neondatabase/compute-node-v16 \
@@ -119,39 +152,60 @@ docker run --network=neon-acres-net --rm -it --name=compute \
     --connstr "postgresql://cloud_admin@localhost:55433/postgres" \
     --compute-id 1 -b /usr/local/bin/postgres \
     --config /var/db/postgres/specs/config.json &
+```
 
-# Compute Hook  
+**Start Compute Hook**
+```bash
 docker run --rm --name=compute_hook -p 3000:3000 --network=neon-acres-net \
-    -e storcon_dsn="$storcon_dsn" -e compute_dsn="$compute_dsn" \
-    harbor.acreops.org/acrelab/neon:gcs ctrl_plane_self_hosted &
+    -e storcon_dsn="$storcon_dsn" -e compute_dsn="$compute_dsn" -e RUST_DEBUG=1 \
+  harbor.acreops.org/acrelab/compute_hook:latest
 ```
 
 ## Operational Commands
 
 ### Diagnostics
+
+**Check shard layout on PageServer 1**
 ```bash
-# Check shard layout
 curl localhost:9898/v1/location_config | jq
+```
+
+**Check shard layout on PageServer 2**
+```bash
 curl localhost:9899/v1/location_config | jq
+```
 
-# Check node status
+**Check node status**
+```bash
 curl -X GET $storcon_api/control/v1/node
+```
 
-# Check tenant status
+**Check tenant status**
+```bash
 curl -X GET $storcon_api/v1/tenant/$tenant
 ```
 
 ### Node Management
 
 #### PageServer lifecycle
-```bash
-# Graceful restart: just stop/start container - shards auto-migrate
-docker stop pageserver1
-docker start pageserver1
 
-# Remove node completely (drain first, then delete)
+**Graceful restart PageServer 1 (shards auto-migrate)**
+```bash
+docker stop pageserver1
+```
+
+**Start PageServer 1**
+```bash
+docker start pageserver1
+```
+
+**Drain node before removal**
+```bash
 curl -X PUT $storcon_api/control/v1/node/1/drain
-# Wait for shards to migrate away
+```
+
+**Delete node after draining**
+```bash
 curl -X DELETE $storcon_api/control/v1/node/1
 ```
 
@@ -161,14 +215,18 @@ curl -X DELETE $storcon_api/control/v1/node/1
 - Emergency rebalancing when automatic migration fails
 - Specific placement requirements
 
+**Check current shard placement**
 ```bash
-# Check current shard placement first
-curl -X GET $storcon_api/v1/tenant/$tenant
+curl -X GET $storcon_api/control/v1/tenant/$tenant
+```
 
-# Migrate specific shard only if needed
+**Migrate specific shard to node 2**
+```bash
 curl -X PUT $storcon_api/control/v1/tenant/${tenant}-0002/migrate -d '{"node_id":2}'
+```
 
-# Force migration if scheduler objects (use with caution)
+**Force migration if scheduler objects (use with caution)**
+```bash
 curl -X PUT $storcon_api/control/v1/tenant/${tenant}-0002/migrate -d '{"node_id":2,"migration_config":{"override_scheduler":true}}'
 ```
 
@@ -180,14 +238,19 @@ curl -X PUT $storcon_api/control/v1/tenant/${tenant}-0002/migrate -d '{"node_id"
 **Root Cause**: Compute connection string out of sync with actual shard locations
 
 **Solution** (try in order):
+
+**1. Check current shard layout**
 ```bash
-# 1. Check current shard layout
-curl -X GET $storcon_api/v1/tenant/$tenant | jq '.shards[] | {shard_id, node_attached, node_secondary}'
+curl -X GET $storcon_api/control/v1/tenant/$tenant | jq '.shards[] | {shard_id, node_attached, node_secondary}'
+```
 
-# 2. Restart compute hook to refresh connection strings
+**2. Restart compute hook to refresh connection strings**
+```bash
 docker restart compute_hook
+```
 
-# 3. If still broken, restart compute node
+**3. If still broken, restart compute node**
+```bash
 docker restart compute
 ```
 
@@ -198,11 +261,14 @@ docker restart compute
 **Normal DDL Operations** (CREATE TABLE, ALTER, DROP TABLE) work normally with sharded tenants. No special handling required.
 
 **If you encounter DDL issues**:
-```bash
-# Check tenant status
-curl -X GET $storcon_api/v1/tenant/$tenant
 
-# Restart compute if connection issues persist
+**Check tenant status**
+```bash
+curl -X GET $storcon_api/control/v1/tenant/$tenant
+```
+
+**Restart compute if connection issues persist**
+```bash
 docker restart compute
 ```
 
@@ -211,44 +277,65 @@ docker restart compute
 **IMPORTANT**: Always use storage controller API (port 1234), never direct pageserver APIs for time travel.
 
 #### Complete Time Travel Workflow
+
+**0. STOP COMPUTE FIRST! (Required to avoid basebackup conflicts)**
 ```bash
-# 1. Detach tenant completely (all shards)
-curl -X PUT $storcon_api/v1/tenant/$tenant/policy -d '{
+docker stop compute
+```
+
+**1. Detach tenant completely (all shards)**
+```bash
+curl -X PUT $storcon_api/control/v1/tenant/$tenant/policy -d '{
   "placement": "Detached"
 }'
+```
 
-# 2. Wait for detachment to complete
+**2. Wait for detachment to complete**
+```bash
 while true; do
   status=$(curl -s $storcon_api/v1/tenant/$tenant | jq -r '.shards[0].policy')
   if [ "$status" = "Detached" ]; then break; fi
   echo "Waiting for detachment..."
   sleep 2
 done
+```
 
-# 3. Time travel (specify all historical shard counts)
-# See: libs/pageserver_api/src/models.rs:1389 (TenantTimeTravelRequest)
-# See: storage_controller/src/service.rs:3500-3516 (shard reconstruction logic)
-# See: test_runner/regress/test_storage_controller.py:1385 (usage example)
+**3. Perform time travel (specify all historical shard counts)**
+```bash
 curl -X PUT "$storcon_api/v1/tenant/$tenant/time_travel_remote_storage?travel_to=2025-01-01T12:00:00Z&done_if_after=2025-01-01T13:00:00Z" \
   -H "Content-Type: application/json" \
   -d '{
-    "shard_counts": [1, 2]
+    "shard_counts": [2]
   }'
+```
 
-# 4. Reattach tenant
-curl -X PUT $storcon_api/v1/tenant/$tenant/policy -d '{
+**4. Reattach tenant (all shards)**
+```bash
+curl -X PUT $storcon_api/control/v1/tenant/$tenant/policy -d '{
   "placement": {"Attached": 1}
 }'
-
-# 5. Restart compute to pick up restored data
-docker restart compute
 ```
+
+**5. Restart pageservers to load post-time-travel timeline state**
+```bash
+docker restart pageserver1 pageserver2
+```
+
+**6. Start compute (will get fresh basebackup from post-time-travel state)**
+```bash
+docker start compute
+```
+
+**WARNING**: Don't go too far back! Must be after init.db.zst creation in pageserver bucket. Check GCS bucket timeline dir to see earliest safe timestamp.
 
 #### Notes
 - Storage controller validates all shards are detached before time travel
 - Specify all shard counts this tenant has ever used in `shard_counts` array
 - Storage controller automatically handles all shard coordination
 - Never use direct pageserver APIs (ports 9898/9899) for time travel operations
+- **CRITICAL**: Stop compute before time travel to prevent "Timeline not found" basebackup errors
+- **CRITICAL**: Don't time travel before timeline initialization - check GCS bucket for init.db.zst timestamp
+- Pageservers must be restarted after time travel to reload the new timeline state
 
 ### Best Practices
 
@@ -259,15 +346,30 @@ docker restart compute
 5. **Time travel through storage controller** - ensures proper shard coordination
 
 ### Emergency Recovery
-```bash
-# If everything breaks, restart in this order:
-# 1. Stop all containers
-docker stop $(docker ps -q --filter network=neon-acres-net)
 
-# 2. Restart infrastructure (DB, broker, controller first)
-# 3. Restart pageservers
-# 4. Check shard placement and fix if needed
-# 5. Restart compute last
+**1. Stop all containers**
+```bash
+docker stop $(docker ps -q --filter network=neon-acres-net)
+```
+
+**2. Restart infrastructure components first**
+Follow the "Start Infrastructure" section above to restart:
+- Storage Controller database
+- Storage Broker  
+- SafeKeepers
+- Storage Controller
+
+**3. Restart PageServers**
+Follow the "Start PageServers" section above
+
+**4. Check shard placement and fix if needed**
+```bash
+curl -X GET $storcon_api/control/v1/tenant/$tenant
+```
+
+**5. Restart compute last**
+```bash
+docker start compute
 ```
 
 ## Key Insights
