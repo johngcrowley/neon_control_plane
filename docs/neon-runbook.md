@@ -323,15 +323,15 @@ docker restart pageserver1 pageserver2
 docker start compute
 ```
 
-**WARNING**: Don't go too far back! Must be after init.db.zst creation in pageserver bucket. Check GCS bucket timeline dir to see earliest safe timestamp.
-
 #### Notes
 - Storage controller validates all shards are detached before time travel
 - Specify all shard counts this tenant has ever used in `shard_counts` array
 - Storage controller automatically handles all shard coordination
 - Never use direct pageserver APIs (ports 9898/9899) for time travel operations
 - **CRITICAL**: Stop compute before time travel to prevent "Timeline not found" basebackup errors
-- **CRITICAL**: Don't time travel before timeline initialization - check GCS bucket for init.db.zst timestamp
+- Manually edit the connstring order for PageServer in Compute's `config.json` if you get stuck
+- Re-do the `curl` to create timeline if compute spazzes about "can't find basebackup
+ after time travel.
 - Pageservers must be restarted after time travel to reload the new timeline state
 
 ### Best Practices
