@@ -105,7 +105,7 @@ docker run --rm -p 9898:9898 --name=pageserver1 --network=neon-acres-net \
 
 **Start PageServer 2**
 ```bash
-docker run --rm -p 9899:9898 --name=pageserver2 --network=neon-acres-net \
+docker run --rm -p 9899:9899 --name=pageserver2 --network=neon-acres-net \
     -v $GOOGLE_APPLICATION_CREDENTIALS:/data/bourdain.json \
     -v ./.neon/pageserver2:/data/.neon/ \
     -e GOOGLE_APPLICATION_CREDENTIALS=/data/bourdain.json \
@@ -171,8 +171,9 @@ curl -X GET $storcon_api/control/v1/node
 ```
 
 **Check tenant status**
+- Note: prefer this API over `location_config` individual PageServer endpoints above
 ```bash
-curl -X GET $storcon_api/v1/tenant/$tenant
+curl -X GET $storcon_api/control/v1/tenant/$tenant
 ```
 
 ### Node Management
