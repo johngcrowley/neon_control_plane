@@ -162,7 +162,7 @@ curl -X DELETE $storcon_api/control/v1/node/1
 
 ```bash
 # Check current shard placement first
-curl -X GET $storcon_api/v1/tenant/$tenant
+curl -X GET $storcon_api/control/v1/tenant/$tenant
 
 # Migrate specific shard only if needed
 curl -X PUT $storcon_api/control/v1/tenant/${tenant}-0002/migrate -d '{"node_id":2}'
@@ -181,7 +181,7 @@ curl -X PUT $storcon_api/control/v1/tenant/${tenant}-0002/migrate -d '{"node_id"
 **Solution** (try in order):
 ```bash
 # 1. Check current shard layout
-curl -X GET $storcon_api/v1/tenant/$tenant | jq '.shards[] | {shard_id, node_attached, node_secondary}'
+curl -X GET $storcon_api/control/v1/tenant/$tenant | jq '.shards[] | {shard_id, node_attached, node_secondary}'
 
 # 2. Restart compute hook to refresh connection strings
 docker restart compute_hook
@@ -199,7 +199,7 @@ docker restart compute
 **If you encounter DDL issues**:
 ```bash
 # Check tenant status
-curl -X GET $storcon_api/v1/tenant/$tenant
+curl -X GET $storcon_api/control/v1/tenant/$tenant
 
 # Restart compute if connection issues persist
 docker restart compute
@@ -211,8 +211,8 @@ docker restart compute
 
 #### Complete Time Travel Workflow
 ```bash
-# 1. Detach tenant completely (all shards)
-curl -X PUT $storcon_api/v1/tenant/$tenant/policy -d '{
+# 1. Detach tenant completely (all shards) -- this worked. Storage controller showed all detaching.
+curl -X PUT $storcon_api/control/v1/tenant/$tenant/policy -d '{
   "placement": "Detached"
 }'
 
@@ -224,23 +224,23 @@ while true; do
   sleep 2
 done
 
-# 3. Time travel (specify all historical shard counts)
+# 3. Time travel (specify all historical shard counts) -- this worked!
 # See: libs/pageserver_api/src/models.rs:1389 (TenantTimeTravelRequest)
 # See: storage_controller/src/service.rs:3500-3516 (shard reconstruction logic)
 # See: test_runner/regress/test_storage_controller.py:1385 (usage example)
 curl -X PUT "$storcon_api/v1/tenant/$tenant/time_travel_remote_storage?travel_to=2025-01-01T12:00:00Z&done_if_after=2025-01-01T13:00:00Z" \
   -H "Content-Type: application/json" \
   -d '{
-    "shard_counts": [1, 2]
+    "shard_counts": [2]
   }'
 
-# 4. Reattach tenant
-curl -X PUT $storcon_api/v1/tenant/$tenant/policy -d '{
+# 4. Reattach tenant -- this reattaches all in storage controller!
+curl -X PUT $storcon_api/control/v1/tenant/$tenant/policy -d '{
   "placement": {"Attached": 1}
 }'
 
-# 5. Restart compute to pick up restored data
-docker restart compute
+# 5. I restarted compute, but it's unable to find the basebackup but pageservers seem happy?
+
 ```
 
 #### Notes
