@@ -219,7 +219,6 @@ curl -X DELETE $storcon_api/control/v1/node/1
 ```bash
 curl -X GET $storcon_api/control/v1/tenant/$tenant
 ```
-
 **Migrate specific shard to node 2**
 ```bash
 curl -X PUT $storcon_api/control/v1/tenant/${tenant}-0002/migrate -d '{"node_id":2}'
@@ -261,6 +260,9 @@ docker restart compute
 **Normal DDL Operations** (CREATE TABLE, ALTER, DROP TABLE) work normally with sharded tenants. No special handling required.
 
 **If you encounter DDL issues**:
+```bash
+# Check tenant status
+curl -X GET $storcon_api/control/v1/tenant/$tenant
 
 **Check tenant status**
 ```bash
@@ -301,6 +303,10 @@ done
 ```
 
 **3. Perform time travel (specify all historical shard counts)**
+- libs/pageserver_api/src/models.rs:1389 (TenantTimeTravelRequest)
+- storage_controller/src/service.rs:3500-3516 (shard reconstruction logic)
+- test_runner/regress/test_storage_controller.py:1385 (usage example)
+
 ```bash
 curl -X PUT "$storcon_api/v1/tenant/$tenant/time_travel_remote_storage?travel_to=2025-01-01T12:00:00Z&done_if_after=2025-01-01T13:00:00Z" \
   -H "Content-Type: application/json" \
