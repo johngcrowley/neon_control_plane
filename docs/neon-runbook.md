@@ -74,11 +74,6 @@ docker run --rm -p 1234:1234 --name storage_controller --network=neon-acres-net 
     --max-offline-interval 10s --max-warming-up-interval 30s --control-plane-url http://compute_hook:3000 
 ```
 
-**Wait for storage controller startup**
-```bash
-sleep 5
-```
-
 **Register SafeKeepers with storage controller**
 ```bash
 for sk in 1 2 3; do
