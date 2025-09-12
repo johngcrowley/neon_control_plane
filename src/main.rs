@@ -101,16 +101,15 @@ async fn notify_attach_handler(
     State(pooler): State<DbPoolsState>,
     Json(mut payload): Json<ComputeHookNotifyRequest>,
 ) -> anyhow::Result<String, http::StatusCode> {
+    
     info!(
         "Received notify-attach request with params: {:?}, {:?}, {:?}",
         payload.tenant_id, payload.stripe_size, payload.shards,
     );
 
-    tracing::debug!("{:?}", payload);
-
     payload.shards.sort_by_key(|k| k.shard_number);
     
-    tracing::debug!(
+    info!(
         "Sorted shards: {:?}",
         payload.shards,
     );
@@ -123,18 +122,21 @@ async fn notify_attach_handler(
         })
         .collect();
 
-    let sql = "select 'host=' || listen_pg_addr || ' ' || 'port=' || listen_pg_port as addr from nodes where node_id =  ANY($1)";
-    let connstring: Vec<String> = sqlx::query(sql)
-        .bind(&node_ids)
-        .fetch_all(&pooler.storcon)
-        .await
-        .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?
-        .iter()
-        .map(|r| r.get("addr"))
-        .collect();
+    let mut connstring = vec![];
+    for node in node_ids.iter() {
+        
+        let sql = "select 'host=' || listen_pg_addr || ' ' || 'port=' || listen_pg_port as addr from nodes where node_id = $1";
+        let rows = sqlx::query(sql)
+            .bind(&node)
+            .fetch_all(&pooler.storcon)
+            .await
+            .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
+        
+        for row in rows {
+            connstring.push(row.get::<String, _>("addr"));
+        }
+    }
     
-    tracing::debug!("our node ids: {:?}", node_ids);
-
     // set neon.pageserver_connstring to a comma-separated list of PG conn strings to pageservers according to the shards list
     // -- the shards identified by NodeId must be converted to the address+port of the node.
     // -- if stripe_size is not None, set neon.shard_stripe_size to this value

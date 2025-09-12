@@ -378,6 +378,44 @@ curl -X GET $storcon_api/control/v1/tenant/$tenant
 docker start compute
 ```
 
+## Point-in-Time Recovery (PITR)
+
+### PITR Workflow
+
+**1. Get LSN by timestamp**
+```bash
+new_timeline="cf4bd6de362ddf64adde0db5c03cf25f"
+curl -G -H "Content-Type: application/json" \
+    "$storcon_api/v1/tenant/$tenant/timeline/$timeline/get_lsn_by_timestamp?timestamp=2024-08-22T19:35:44Z"
+```
+
+**2. Create new timeline based on previous timeline's timestamp**
+```bash
+curl -X POST -H "Content-Type: application/json" \
+    -d '{
+  "new_timeline_id": "'$new_timeline'",
+  "ancestor_timeline_id": "'$timeline'",
+  "ancestor_start": "0/1520CF8",
+  "pg_version": 16
+}' \
+    $storcon_api/v1/tenant/$tenant/timeline/
+```
+
+**3. Start PITR Compute Node**
+```bash
+docker run --rm --name=compute-pitr \
+    -p 5431:55433 -p 3081:3080 \
+    --network=neon-acres-net \
+    -v ./.neon/compute-pitr/:/var/db/postgres/specs/ \
+    neondatabase/compute-node-v16 \
+    --pgdata /var/db/postgres/compute \
+    --connstr "postgresql://cloud_admin@localhost:5431/postgres" \
+    --compute-id 2 -b /usr/local/bin/postgres \
+    --config /var/db/postgres/specs/config.json &
+```
+
+**Note**: Update timeline ID in `spec.json` configuration file to use the new timeline before starting the PITR compute node.
+
 ## Key Insights
 
 - **Attached(1)** creates most robust setup with automatic failover and load balancing
