@@ -5,7 +5,6 @@
 export tenant="99336152a31c64b41034e4e904629ce9"
 export timeline="814ce0bd2ae452e11575402e8296b64d"
 export storcon_api="http://localhost:1234"
-export GOOGLE_APPLICATION_CREDENTIALS="/path/to/your/service-account-key.json"
 export storcon_dsn="postgresql://postgres:postgres@standalonepg:5432/storage_controller"
 export compute_dsn="postgresql://cloud_admin:cloud_admin@compute:55433/postgres"
 ```
