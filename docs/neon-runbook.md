@@ -1,6 +1,21 @@
 # Neon Self-Hosted Consolidated Operations Runbook
 
-- Note, having a bit of difficulty with Compute spazzing and need to be restarted with the timeline `curl` redone so it can find the basebackup. We gotta figure that out.
+## Building Latest Neon with GCS Support
+- Note: awaiting this merge into Neon
+
+**Clone the latest Neon with GCS functionality**
+```bash
+git clone https://github.com/johngcrowley/neon/tree/topic/main/gcs
+cd neon
+```
+
+**Build Docker image with latest GCS API functionality**
+```bash
+docker build -t harbor.acreops.org/acrelab/neon:gcs .
+```
+
+**Using the GCS-enabled base image**
+This image includes the latest GCS API functionality that is up to date with Neon's latest `main` branch as of September 13, 2025. Use this as your base image for all Neon components that require GCS remote storage support.
 
 ## Environment Setup
 
