@@ -1,7 +1,9 @@
 # Neon Self-Hosted Consolidated Operations Runbook
 
-## Building Latest Neon with GCS Support
-- Note: awaiting this merge into Neon
+## How to Build Images
+- Note: awaiting this merge into Neon, for now, use my fork of Neon for all components except for `compute_hook` and the `compute` itself.
+- `compute`: use the Neon PostgreSQL v16 official image, which is already specified in the `docker run` commands below
+- `compute_hook`: use the `Dockerfile` of _this_ repository, and its tag is already specific in the `docker run` commands below
 
 **Clone the latest Neon with GCS functionality**
 ```bash
@@ -16,6 +18,8 @@ docker build -t harbor.acreops.org/acrelab/neon:gcs .
 
 **Using the GCS-enabled base image**
 This image includes the latest GCS API functionality that is up to date with Neon's latest `main` branch as of September 13, 2025. Use this as your base image for all Neon components that require GCS remote storage support.
+
+---
 
 ## Environment Setup
 
