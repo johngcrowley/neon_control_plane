@@ -1,6 +1,6 @@
 # Neon Self-Hosted Consolidated Operations Runbook
 
-- Note, having a bit of difficulty with Compute spazzing and need to be restarted with the timeline `curl` redone so it can find the basebackup. We gotta figure that out.
+- Note, having a bit of difficulty with Compute spazzing and need to be restarted with the timeline `curl` redone so it can find the basebackup. We gotta figure that out. This is with regards to time travel.
 
 ## Environment Setup
 
