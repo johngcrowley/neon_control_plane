@@ -422,12 +422,17 @@ docker run --rm --name=compute-pitr \
     --config /var/db/postgres/specs/config.json &
 ```
 
-**Note**: Update timeline ID in `spec.json` configuration file to use the new timeline before starting the PITR compute node.
+## Example Run
+- note: "`psql` good" means i can `select`, `create`, `drop` from a table
 
-## Key Insights
+1. `docker stop pageserver1` -- shards migrated, `psql` good, hook updated connstring in right order
+2. restart `pageserver1` -- shards stay `Attached` on `pageserver2`, `psql` good, `pageserver1` has warm `Secondary`s.
+3. do a `/migrate` of `0102` (shard 1) -> `pageserver1`. back to initial state (each PS with `Attached` shard). `psql` good.
+4. `attach` DB in `duckdb` and load `condensed_mortgage.parquet`. 
 
-- **Attached(1)** creates most robust setup with automatic failover and load balancing
-- **Storage controller handles everything** - shard placement, migration, failover
-- **Routing errors** = compute connection string out of sync (restart compute_hook)
-- **Manual operations rarely needed** - storage controller automates shard management
-- **Time travel requires storage controller** - never use direct pageserver APIs
+## Compaction, Images, Pages, LSNs
+- TODO: how does compaction really work, what is a page, how to reduce read latency, why are layers downloaded
+
+## Note:
+- Having a bit of difficulty with Compute spazzing and need to be restarted with the timeline `curl` redone so it can find the basebackup. We gotta figure that out. This is with regards to time travel.
+- Update timeline ID in `spec.json` configuration file to use the new timeline before starting the PITR compute node.
