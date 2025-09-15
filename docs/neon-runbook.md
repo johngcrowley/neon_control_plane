@@ -25,6 +25,7 @@ This image includes the latest GCS API functionality that is up to date with Neo
 
 **Set tenant and connection variables**
 ```bash
+export MOUNT=/media/john/vatican/gcs-neon
 export tenant="99336152a31c64b41034e4e904629ce9"
 export timeline="814ce0bd2ae452e11575402e8296b64d"
 export storcon_api="http://localhost:1234"
@@ -77,6 +78,7 @@ docker run --rm --network=neon-acres-net --name=storage_broker -p 50051:50051 \
 for i in 1 2 3; do
     docker run --rm -d --network=neon-acres-net --name=safekeeper$i \
         -v $GOOGLE_APPLICATION_CREDENTIALS:/data/bourdain.json \
+        -v $MOUNT/.neon/safekeepers/safekeeper-${i}:/data \
         -e GOOGLE_APPLICATION_CREDENTIALS=/data/bourdain.json -p 767$i:7676 \
         harbor.acreops.org/acrelab/neon:gcs safekeeper \
         --id=$i --listen-pg="safekeeper$i:5454" --listen-http='0.0.0.0:7676' \
@@ -119,7 +121,7 @@ done
 ```bash
 docker run --rm -p 9898:9898 --name=pageserver1 --network=neon-acres-net \
     -v $GOOGLE_APPLICATION_CREDENTIALS:/data/bourdain.json \
-    -v ./.neon/pageserver1:/data/.neon/ \
+    -v $MOUNT/.neon/pageserver1:/data/.neon/ \
     -e GOOGLE_APPLICATION_CREDENTIALS=/data/bourdain.json \
     harbor.acreops.org/acrelab/neon:gcs pageserver -D /data/.neon 
 ```
@@ -128,7 +130,7 @@ docker run --rm -p 9898:9898 --name=pageserver1 --network=neon-acres-net \
 ```bash
 docker run --rm -p 9899:9899 --name=pageserver2 --network=neon-acres-net \
     -v $GOOGLE_APPLICATION_CREDENTIALS:/data/bourdain.json \
-    -v ./.neon/pageserver2:/data/.neon/ \
+    -v $MOUNT/.neon/pageserver2:/data/.neon/ \
     -e GOOGLE_APPLICATION_CREDENTIALS=/data/bourdain.json \
     harbor.acreops.org/acrelab/neon:gcs pageserver -D /data/.neon 
 ```
@@ -157,7 +159,8 @@ curl -X POST $storcon_api/v1/tenant/$tenant/timeline -d '{
 **Start Compute Node**
 ```bash
 docker run --network=neon-acres-net --rm -it --name=compute \
-    -p 55433:55433 -p 3080:3080 -v ./.neon/compute/:/var/db/postgres/specs/ \
+    -p 55433:55433 -p 3080:3080 \
+    -v $MOUNT/.neon/compute/:/var/db/postgres/specs/ \
     neondatabase/compute-node-v16 \
     --pgdata /var/db/postgres/compute \
     --connstr "postgresql://cloud_admin@localhost:55433/postgres" \
