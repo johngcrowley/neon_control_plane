@@ -101,9 +101,9 @@ docker run --rm -p 1234:1234 --name storage_controller --network=neon-acres-net 
 ```bash
 for sk in 1 2 3; do
   curl -X POST localhost:1234/control/v1/safekeeper/${sk} -d "{
-    \"id\": ${sk}, \"region_id\": \"us-central\", \"version\": 1, 
-    \"host\":\"safekeeper${sk}\", \"port\":5454, \"http_port\":7676, 
-    \"availability_zone_id\": \"ps1\"}"
+    "id": ${sk}, "region_id": "us-central", "version": 1, 
+    "host":"safekeeper${sk}", "port":5454, "http_port":7676, 
+    "availability_zone_id": "ps1"}"
 done
 ```
 
