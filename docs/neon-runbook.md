@@ -25,7 +25,7 @@ This image includes the latest GCS API functionality that is up to date with Neo
 
 **Set tenant and connection variables**
 ```bash
-export MOUNT=/media/john/vatican/gcs-neon
+export MOUNT=/media/john/vatican/neon-gcs
 export tenant="99336152a31c64b41034e4e904629ce9"
 export timeline="814ce0bd2ae452e11575402e8296b64d"
 export storcon_api="http://localhost:1234"
