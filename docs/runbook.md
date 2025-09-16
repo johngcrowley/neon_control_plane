@@ -33,6 +33,16 @@ export storcon_dsn="postgresql://postgres:postgres@standalonepg:5432/storage_con
 export compute_dsn="postgresql://cloud_admin:cloud_admin@compute:55433/postgres"
 ```
 
+## A Note on Sharding
+
+### SpeedyDonderbal Jr's Sharding Set-up recommendations:
+
+- "Pageservers throughput for table-reads looked very good. We generally had over 200MB/sec per pageserver and sharding parallelized well."
+- "We have tested with sharding up to 16 shards (8 seemed better on the hardware we had; A single pageserver could do about 1GB/sec read/write I/O and 8 exhausted the NVMe's.
+You can have them be primary for a shard and secondary for another shard. It works great. Has to do with the API call to attach a tenant. Don't know the syntax by heart but it's something like Attached:1
+That means 1 standby. The API is pretty well documented in the openapi.spec files and some things you can gather from the source code of pageserver itself.
+Our issue with 8 shards was the bandwidth for safekeepers. They would send all changes to each shard and we hit 40 GBits from a single safekeeper, which was a bit much for only 5 GBit effective changes, haha."
+
 ## Quick Infrastructure Startup
 
 ### 1. Reset Environment (if needed)
@@ -177,30 +187,19 @@ docker run --rm --name=compute_hook -p 3000:3000 --network=neon-acres-net \
 
 ## Operational Commands
 
-### Diagnostics
-
-**Check shard layout on PageServer 1**
-```bash
-curl localhost:9898/v1/location_config | jq
-```
-
-**Check shard layout on PageServer 2**
-```bash
-curl localhost:9899/v1/location_config | jq
-```
-
-**Check node status**
-```bash
-curl -X GET $storcon_api/control/v1/node
-```
-
+### IMPORTANT: Use this to see which shards are on which PageServer.
+- This will determine if you need to nudge a shard over to an "idle" (just a Warm Secondary) PageServer using `/migrate` commands below.
 **Check tenant status**
-- Note: prefer this API over `location_config` individual PageServer endpoints above
 ```bash
 curl -X GET $storcon_api/control/v1/tenant/$tenant
 ```
 
-### Node Management
+### View nodes
+
+**Check node status**
+```bash
+curl -X GET $storcon_api/control/v1/node
+``### Node Management
 
 #### PageServer lifecycle
 
@@ -247,49 +246,20 @@ curl -X PUT $storcon_api/control/v1/tenant/${tenant}-0002/migrate -d '{"node_id"
 ## Troubleshooting
 
 ### Shard Routing Errors
-**Symptoms**: `request routed to wrong shard` errors in pageserver logs, compute connection issues
+- **IMPORTANT** sometimes you'll see compute logs on fritz, and one of your pageservers.
+- It may take a manual edit of the `config.json` file on compute. 
+- It's simply that the `pageserver_connstring` compute parameter is in the wrong order.
+- The order is based on shard. So if you have 4 shards, find which one is "shard 0" and which PageServer it lives on, and that goes first in the comma-separated connstring string.
+- Use the below API call to find that information out.
 
-**Root Cause**: Compute connection string out of sync with actual shard locations
-
-**Solution** (try in order):
-
-**1. Check current shard layout**
+**Check current shard layout**
 ```bash
 curl -X GET $storcon_api/control/v1/tenant/$tenant | jq '.shards[] | {shard_id, node_attached, node_secondary}'
 ```
 
-**2. Restart compute hook to refresh connection strings**
-```bash
-docker restart compute_hook
-```
-
-**3. If still broken, restart compute node**
-```bash
-docker restart compute
-```
-
 **Note**: With `Attached(1)` policy, storage controller maintains proper shard distribution automatically. Manual rebalancing should not be needed.
 
-### Table Operations
-
-**Normal DDL Operations** (CREATE TABLE, ALTER, DROP TABLE) work normally with sharded tenants. No special handling required.
-
-**If you encounter DDL issues**:
-```bash
-# Check tenant status
-curl -X GET $storcon_api/control/v1/tenant/$tenant
-
-**Check tenant status**
-```bash
-curl -X GET $storcon_api/control/v1/tenant/$tenant
-```
-
-**Restart compute if connection issues persist**
-```bash
-docker restart compute
-```
-
-### Time Travel / Point-in-Time Recovery
+## Time Travel / Point-in-Time Recovery
 
 **IMPORTANT**: Always use storage controller API (port 1234), never direct pageserver APIs for time travel.
 
@@ -322,6 +292,7 @@ done
 - storage_controller/src/service.rs:3500-3516 (shard reconstruction logic)
 - test_runner/regress/test_storage_controller.py:1385 (usage example)
 
+** Note: `shard_counts` is just an integer to get total count to crawl in GCS, as each shard is a GCS path **
 ```bash
 curl -X PUT "$storcon_api/v1/tenant/$tenant/time_travel_remote_storage?travel_to=2025-01-01T12:00:00Z&done_if_after=2025-01-01T13:00:00Z" \
   -H "Content-Type: application/json" \
@@ -366,33 +337,6 @@ docker start compute
 4. **Clean node removal** - use drain/delete to avoid heartbeat warnings
 5. **Time travel through storage controller** - ensures proper shard coordination
 
-### Emergency Recovery
-
-**1. Stop all containers**
-```bash
-docker stop $(docker ps -q --filter network=neon-acres-net)
-```
-
-**2. Restart infrastructure components first**
-Follow the "Start Infrastructure" section above to restart:
-- Storage Controller database
-- Storage Broker  
-- SafeKeepers
-- Storage Controller
-
-**3. Restart PageServers**
-Follow the "Start PageServers" section above
-
-**4. Check shard placement and fix if needed**
-```bash
-curl -X GET $storcon_api/control/v1/tenant/$tenant
-```
-
-**5. Restart compute last**
-```bash
-docker start compute
-```
-
 ## Point-in-Time Recovery (PITR)
 
 ### PITR Workflow
@@ -429,7 +373,7 @@ docker run --rm --name=compute-pitr \
     --config /var/db/postgres/specs/config.json &
 ```
 
-## Example Run
+## Example Run Notes:
 - note: "`psql` good" means i can `select`, `create`, `drop` from a table
 
 1. `docker stop pageserver1` -- shards migrated, `psql` good, hook updated connstring in right order
@@ -437,9 +381,3 @@ docker run --rm --name=compute-pitr \
 3. do a `/migrate` of `0102` (shard 1) -> `pageserver1`. back to initial state (each PS with `Attached` shard). `psql` good.
 4. `attach` DB in `duckdb` and load `condensed_mortgage.parquet`. 
 
-## Compaction, Images, Pages, LSNs
-- TODO: how does compaction really work, what is a page, how to reduce read latency, why are layers downloaded
-
-## Note:
-- Having a bit of difficulty with Compute spazzing and need to be restarted with the timeline `curl` redone so it can find the basebackup. We gotta figure that out. This is with regards to time travel.
-- Update timeline ID in `spec.json` configuration file to use the new timeline before starting the PITR compute node.
