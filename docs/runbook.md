@@ -165,6 +165,8 @@ curl -X POST $storcon_api/v1/tenant/$tenant/timeline -d '{
 ```
 
 ### 5. Start Compute and Hook
+- Note: `config.json` should have the timeline, tenant, and pageserver information on it at this point, based on what you created above.
+- Else, you will have shard routing errors. See below under "Troubleshooting" for more details.
 
 **Start Compute Node**
 ```bash
