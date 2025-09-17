@@ -1,5 +1,7 @@
 # Neon WAL System: Simplified Deep Dive
 
+Read [this](https://github.com/neondatabase/neon/blob/85ce109361be068ff890f9fece786a81f0724136/docs/pageserver-compaction.md) excellent piece, first.
+
 This document breaks down the most confusing parts of Neon's WAL system in simple terms.
 
 ## 1. L0 vs L1 Layers: The Filing Cabinet Analogy
