@@ -1,0 +1,152 @@
+# Ultra-Performance Optimized Pageserver Configuration
+# Optimized for maximum read/write latency performance with latest features
+# Based on Neon codebase analysis - pageserver/src/config.rs:447-837
+
+# Core Network Configuration
+listen_pg_addr = '0.0.0.0:6400'
+listen_http_addr = '0.0.0.0:9898'
+listen_grpc_addr = '0.0.0.0:51051'  # Enable gRPC for performance monitoring
+
+# Storage Configuration
+remote_storage = {
+    endpoint = 'http://minio:9000',
+    bucket_name = 'neon',
+    bucket_region = 'eu-north-1',
+    prefix_in_bucket = '/pageserver'
+}
+control_plane_api = 'http://0.0.0.0:6666'
+control_plane_emergency_mode = false
+
+# === VECTORED I/O OPTIMIZATIONS ===
+# Maximize vectored read performance - pageserver_api/src/config.rs:691-704
+max_vectored_read_bytes = 2097152  # 2MB - much larger than default 130KB
+max_get_vectored_keys = 256        # 8x default for better batching
+
+# Enable sidecar task for concurrent I/O - pageserver_api/src/config.rs:348-362
+get_vectored_concurrent_io = "sidecar-task"
+
+# === VIRTUAL FILE I/O ENGINE OPTIMIZATION ===
+# Use highest performance I/O engine - virtual_file/io_engine.rs:28-36
+virtual_file_io_engine = "tokio-epoll-uring"  # Linux io_uring for maximum performance
+virtual_file_io_mode = "direct"               # Bypass OS cache for consistent latency
+
+# === PAGE SERVICE PIPELINING ===
+# Advanced pipelining for concurrent request processing - pageserver_api/src/config.rs:311-344
+[page_service_pipelining]
+mode = "pipelined"
+execution = "concurrent-futures"  # Maximum concurrency
+batching = "scattered-lsn"       # Allow different LSNs in same batch
+max_batch_size = 256             # Large batches for better throughput
+
+# === MEMORY & CACHING OPTIMIZATIONS ===
+page_cache_size = 134217728      # 128MB page cache (16x default)
+max_file_descriptors = 16384     # High FD limit for many concurrent files
+
+# === CONCURRENCY OPTIMIZATIONS ===
+concurrent_tenant_warmup = 64                            # 8x default for parallel tenant loading
+concurrent_tenant_size_logical_size_queries = 16        # 16x default for size calculations
+heatmap_upload_concurrency = 64                         # 8x default for heatmap operations
+secondary_download_concurrency = 32                     # 32x default for secondary downloads
+
+# === BATCHING & INGESTION ===
+ingest_batch_size = 1000         # 10x default for better WAL ingestion throughput
+
+# === IMAGE COMPRESSION ===
+image_compression = { algorithm = "zstd", level = 1 }  # Fast compression
+
+# === EVICTION & MEMORY MANAGEMENT ===
+ephemeral_bytes_per_memory_kb = 2  # More aggressive ephemeral layer management
+timeline_offloading = true
+
+# === TENANT-LEVEL PERFORMANCE SETTINGS ===
+[tenant_config]
+# Checkpoint & WAL Settings - optimized for low latency
+checkpoint_distance = 67108864   # 64MB - smaller for faster checkpointing
+checkpoint_timeout = "30s"       # Faster checkpoint timeout
+
+# Compaction Optimizations - tenant_conf_defaults:849-871
+compaction_target_size = 67108864     # 64MB L1 layers
+compaction_period = "10s"             # More frequent compaction
+compaction_threshold = 6              # Lower threshold for faster compaction
+compaction_upper_limit = 6            # Smaller batches for lower latency
+compaction_shard_ancestor = true      # Enable shard ancestor compaction
+compaction_l0_first = true            # Prioritize L0 compaction
+compaction_l0_semaphore = true        # Separate L0 semaphore
+
+# L0 Backpressure Settings - optimized for high throughput
+l0_flush_delay_threshold = 18         # 3x compaction_threshold
+l0_flush_stall_threshold = 24         # 4x compaction_threshold for emergency
+
+# Advanced Compaction Algorithm
+compaction_algorithm = { kind = "tiered" }  # Modern tiered compaction
+
+# Image Layer Creation - optimized for read performance
+image_creation_threshold = 2              # More aggressive image layer creation
+image_layer_creation_check_threshold = 1  # Check more frequently
+image_creation_preempt_threshold = 2      # Preempt with fewer L0 layers
+image_layer_force_creation_period = "5m" # Force image creation more often
+
+# Large timeline optimization threshold
+image_layer_generation_large_timeline_threshold = 1073741824  # 1GB
+
+# GC Settings - balanced for performance and storage
+gc_horizon = 33554432    # 32MB horizon for faster GC
+gc_period = "30m"        # More frequent GC
+pitr_interval = "1 day"  # Shorter retention for performance
+
+# GC-Compaction Features - newest performance features
+gc_compaction_enabled = true
+gc_compaction_verification = true
+gc_compaction_initial_threshold_kb = 1048576    # 1GB threshold
+gc_compaction_ratio_percent = 80                # Trigger at 80% ratio
+
+# WAL Receiver Optimizations
+walreceiver_connect_timeout = "5s"
+lagging_wal_timeout = "5s"
+max_lsn_wal_lag = 536870912  # 512MB lag tolerance
+
+# Memory & Eviction Policy
+eviction_policy = "lru_on_disk"
+evictions_low_residence_duration_metric_threshold = "1h"
+
+# Throttling - optimized for high throughput
+timeline_get_throttle = { task_kinds = [], initial = 0, refill_interval = "1s", refill_amount = 1000000, max = 1000000 }
+
+# SLRU Optimization
+lazy_slru_download = true
+
+# Heatmap Settings - for secondary location optimization
+heatmap_period = "5m"
+
+# Rel Size V2 - enable new features
+rel_size_v2_enabled = true
+
+# Cache Settings
+relsize_snapshot_cache_capacity = 10000      # 10x default cache size
+basebackup_cache_enabled = true             # Enable basebackup caching
+
+# === DISK USAGE EVICTION ===
+[disk_usage_based_eviction]
+enabled = true
+max_usage_pct = 75      # More aggressive eviction threshold
+min_avail_bytes = 5368709120  # 5GB minimum
+period = "30s"          # More frequent checks
+eviction_order = { type = "RelativeAccessed", args = { highest_layer_count_loses_first = true } }
+
+# === BACKGROUND TASKS ===
+background_task_maximum_delay = "1s"  # Minimize startup delays
+synthetic_size_calculation_interval = "5m"  # More frequent size calculation
+metric_collection_interval = "5m"           # More frequent metrics
+
+# === L0 FLUSH CONFIGURATION ===
+[l0_flush]
+mode = "direct"
+# Direct mode optimizations would go here based on l0_flush.rs implementation
+
+# === DEVELOPMENT & DEBUGGING ===
+no_sync = false  # Keep durability for production
+enable_read_path_debugging = false
+validate_wal_contiguity = true
+load_previous_heatmap = true
+generate_unarchival_heatmap = true
+force_metric_collection_on_scrape = false  # Reduce overhead
